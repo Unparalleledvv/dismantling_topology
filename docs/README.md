@@ -1,415 +1,467 @@
-# Robustness and resilience of complex networks
+# 网络拆解算法库使用指南
 
-This repository contains the scripts and data from the "Robustness and resilience of complex networks" Nature Review Physics paper by Oriol Artime, Marco Grassia, Manlio De Domenico, James P. Gleeson, Hernán A. Makse, Giuseppe Mangioni, Matjaž Perc and Filippo Radicchi.
+> 项目仓库：https://github.com/kuaiii/dismantling_topology
 
+---
 
-## Citations
+## 1. 项目概述
 
-### How to cite the paper
+本库实现了 **21 种网络拆解（Network Dismantling）算法**，覆盖经典启发式、谱方法、信息论方法、图神经网络（GNN）和强化学习（RL）五大类。所有算法通过统一接口 `dismantle(G, method, stop_condition)` 调用，输入为 `networkx.Graph`，输出为拆解序列。
 
-> Artime, O., Grassia, M., De Domenico, M. et al. Robustness and resilience of complex networks. Nat Rev Phys (2024). https://doi.org/10.1038/s42254-023-00676-y
+### 1.1 算法分类总览
 
-BibTex:
-```bibtex
-@article{artime2024robustness,
-	abstract = {Complex networks are ubiquitous: a cell, the human brain, a group of people and the Internet are all examples of interconnected many-body systems characterized by macroscopic properties that cannot be trivially deduced from those of their microscopic constituents. Such systems are exposed to both internal, localized, failures and external disturbances or perturbations. Owing to their interconnected structure, complex systems might be severely degraded, to the point of disintegration or systemic dysfunction. Examples include cascading failures, triggered by an initially localized overload in power systems, and the critical slowing downs of ecosystems which can be driven towards extinction. In recent years, this general phenomenon has been investigated by framing localized and systemic failures in terms of perturbations that can alter the function of a system. We capitalize on this mathematical framework to review theoretical and computational approaches to characterize robustness and resilience of complex networks. We discuss recent approaches to mitigate the impact of perturbations in terms of designing robustness, identifying early-warning signals and adapting responses. In terms of applications, we compare the performance of the state-of-the-art dismantling techniques, highlighting their optimal range of applicability for practical problems, and provide a repository with ready-to-use scripts, a much-needed tool set.},
-	author = {Artime, Oriol and Grassia, Marco and De Domenico, Manlio and Gleeson, James P. and Makse, Hern{\'a}n A. and Mangioni, Giuseppe and Perc, Matja{\v z} and Radicchi, Filippo},
-	date = {2024/01/08},
-	date-added = {2024-01-09 08:22:35 +0100},
-	date-modified = {2024-01-09 08:23:03 +0100},
-	doi = {10.1038/s42254-023-00676-y},
-	id = {Artime2024},
-	isbn = {2522-5820},
-	journal = {Nature Reviews Physics},
-	title = {Robustness and resilience of complex networks},
-	url = {https://doi.org/10.1038/s42254-023-00676-y},
-	year = {2024},
-	bdsk-url-1 = {https://doi.org/10.1038/s42254-023-00676-y}
-}
-```
+| 类别 | 方法 | 原理简述 |
+|------|------|---------|
+| **静态启发式** | degree, pagerank, betweenness, eigenvector, random | 基于节点中心性一次性打分，按分数降序移除 |
+| **精确解** | brute_force | 枚举小网络的所有节点组合，找最优解 |
+| **Collective Influence** | CI_L1, CI_L2, CI_L3 | 考虑 L-hop 邻居影响的节点重要性度量 |
+| **核分解** | CoreHD | 2-core 最大度移除 → 大树拆分 → 贪心回插 |
+| **谱方法** | GND, EGND | 谱二分 + 贪心顶点覆盖，EGND 多次取最优 |
+| **爆炸免疫** | EI_s1, EI_s2 | 有效度数 + DSU + 贪心策略 |
+| **信息论/纠缠** | entanglement_small/mid/large, vertex_entanglement | 基于 Shannon 熵的谱计算 |
+| **监督 GNN** | GDM, GDM+R | GAT 学习节点重要性 + 可选重插入优化 |
+| **强化学习+GNN** | FINDER | DQN + GraphSAGE，逐步决策移除节点 |
 
-RIS:
-```ris
-TY  - JOUR
-AB  - Complex networks are ubiquitous: a cell, the human brain, a group of people and the Internet are all examples of interconnected many-body systems characterized by macroscopic properties that cannot be trivially deduced from those of their microscopic constituents. Such systems are exposed to both internal, localized, failures and external disturbances or perturbations. Owing to their interconnected structure, complex systems might be severely degraded, to the point of disintegration or systemic dysfunction. Examples include cascading failures, triggered by an initially localized overload in power systems, and the critical slowing downs of ecosystems which can be driven towards extinction. In recent years, this general phenomenon has been investigated by framing localized and systemic failures in terms of perturbations that can alter the function of a system. We capitalize on this mathematical framework to review theoretical and computational approaches to characterize robustness and resilience of complex networks. We discuss recent approaches to mitigate the impact of perturbations in terms of designing robustness, identifying early-warning signals and adapting responses. In terms of applications, we compare the performance of the state-of-the-art dismantling techniques, highlighting their optimal range of applicability for practical problems, and provide a repository with ready-to-use scripts, a much-needed tool set.
-AU  - Artime, Oriol
-AU  - Grassia, Marco
-AU  - De Domenico, Manlio
-AU  - Gleeson, James P.
-AU  - Makse, Hernán A.
-AU  - Mangioni, Giuseppe
-AU  - Perc, Matjaž
-AU  - Radicchi, Filippo
-DO  - 10.1038/s42254-023-00676-y
-ID  - Artime2024
-SN  - 2522-5820
-T2  - Nature Reviews Physics
-TI  - Robustness and resilience of complex networks
-UR  - https://doi.org/10.1038/s42254-023-00676-y
-PY  - 2024
-ER  - 
-```
+---
 
-Also, please cite the original papers of the [algorithms](#algorithms),
-of the [Dataset](#dataset), and of the libraries you use (see the [Setup](#setup) section).
+## 2. 环境配置
 
-### How to cite this repository
-If you use the code, please cite the paper as described [here](#how-to-cite-the-paper).
+### 2.1 主环境：`kanResilience`
 
-## License
-
-The code implemented for the review (that is, the wrappers, the dismantlers and the output scripts) available in this
-repository is released under the GPLv3 License.
-See the LICENSE file for more information.
-However, **please note that the code of the specific integrated algorithms is redistributed from their original
-repositories and may be
-subject to different licenses**.
-Thus, the GPLv3 License may not apply to them and to the code in their folders.
-If you wish to use them, please refer to their original LICENSE files (in the respective folders), and to the original
-authors.
-
-## Algorithms
-
-This library integrates and provides a common interface to the following algorithms:
-
-- Brute Force
-- [Collective Influence (CI)](https://github.com/makselab/Collective-Influence):  [reference](CITATIONS.md#collective-influence-ci)
-- CoreGDM (almost ready, needs some fixes): [reference](CITATIONS.md#coregdm)
-- CoreHD: [reference](CITATIONS.md#corehd)
-- [Ensemble GND (EGND)](https://github.com/renxiaolong/2019-Ensemble-approach-for-generalized-network-dismantling): [reference](CITATIONS.md#ensemble-gnd-egnd)
-- [Explosive Immunization (EI)](https://github.com/pclus/explosive-immunization): [reference](CITATIONS.md#explosive-immunization-ei)
-- [FINDER](https://github.com/FFrankyy/FINDER): [reference](CITATIONS.md#finder)
-- Generalized Network Dismantling (GND): [reference](CITATIONS.md#generalized-network-dismantling-gnd)
-- [Graph Dismantling Machine (GDM)](https://github.com/renxiaolong/Generalized-Network-Dismantling): [reference](CITATIONS.md#graph-dismantling-machine-gdm)
-- [Min-Sum](https://github.com/abraunst/decycler/): [reference](CITATIONS.md#min-sum-ms--greedy-reinsertion-algorithm)
-- NetworkEntanglement: [reference](CITATIONS.md#network-entanglement-ne)
-- [VertexEntanglement](https://github.com/Yiminghh/VertexEntanglement): [reference](CITATIONS.md#vertex-entanglement-ve)
-- Node heuristics (to be integrated in the main dismantler, need to use the separate script for now)
-    - Degree
-    - Betweenness
-    - Eigenvector centrality
-    - PageRank
-
-The package also includes the greedy reinsertion algorithm proposed for the reinsertion phase
-of [Min-Sum](https://github.com/abraunst/decycler/).
-
-**If you use any of these algorithms, please also cite the original papers.
-See the [Citations file](CITATIONS.md) for more information.**
-
-## Setup
-> Expected time for this step: 30m - 1h
-
-This package is written in Python (tested with version 3.9), and uses graph-tool[1] for the graph processing.
-The bundled scripts should take cake of building and setting up the included algorithms.
-However, the users may need to manually install some dependencies, see [Requirements](#requirements) for more information.
-
-Regarding the Python environment, we recommend you to use Conda environments and avoid installing any package in your main Python environment in order to avoid conflicts or issues with your operating system.
-This step is crucial, since some of the algorithms depend (directly and/or indirectly) on different libraries version (e.g., pytorch and tensorflow with different library version requirements).
-
-### Requirements
-
-This package includes many C/C++ algorithms, which require a C++ compiler and some libraries.
-Make sure you have the following libraries installed on your system:
-
-- GCC (tested with version 12.x)
-- Build essentials (e.g., make, cmake, etc.)
-- OpenMP
-- Boost
-- CMake
-
-In an Ubuntu system, you can install them with the following command:
+用于运行除 FINDER 外的所有算法。
 
 ```bash
-sudo apt install build-essential gcc-12 g++-12 cmake libboost-all-dev libomp-dev
+conda activate kanResilience
 ```
 
-While in a Fedora system, you can use the following command:
+**Python 版本**：3.10.20  
+**核心依赖**：
 
+| 包 | 版本 | 用途 |
+|----|------|------|
+| torch | 2.3.0+cu121 | GDM 的 GAT 模型推理 |
+| torch_geometric | 2.7.0 | 图神经网络数据结构和层 |
+| networkx | 3.4.2 | 图数据结构和算法 |
+| numpy | 1.26.4 | 数值计算 |
+| scipy | 1.15.3 | 稀疏矩阵、谱分解 |
+| pandas | 2.3.3 | 数据处理和分析 |
+
+**安装命令**（如需要重建环境）：
 ```bash
-sudo dnf install development-tools gcc gcc-c++ make cmake boost-devel libomp-devel
+conda create -n kanResilience python=3.10
+conda activate kanResilience
+pip install torch==2.3.0 --index-url https://download.pytorch.org/whl/cu121
+pip install torch_geometric==2.7.0
+pip install networkx==3.4.2 numpy==1.26.4 scipy==1.15.3 pandas==2.3.3
 ```
 
-To install Conda, please refer to the [miniconda official documentation](https://docs.conda.io/en/latest/miniconda.html), or to the full [Anaconda distribution](https://www.anaconda.com/).
+### 2.2 FINDER 专用环境：`finder_tf`
 
-### Building your own environment
-
-In this section, we will show how to build the Conda environments with the required dependencies for the various algorithms.
-Remember to switch to the right environment before running the algorithms.
-If you have any issues, please refer to the official documentation of the specific algorithms.
-You can find them in their sub-folders.
-
-#### All algorithms except FINDER and GDM
+用于运行 FINDER 方法（TensorFlow 1.x 依赖）。
 
 ```bash
-conda create -n dismantling python=3.9 boost boost-cpp graph-tool dill tqdm numpy scipy pandas seaborn matplotlib -c anaconda -c conda-forge
-
-conda activate dismantling
+conda activate finder_tf
 ```
 
-#### GDM
+**Python 版本**：3.7.16  
+**核心依赖**：
 
-Create an environment like the generic one, but also install [PyTorch](https://pytorch.org/) and [PyTorch Geometric (PyG)](https://pytorch-geometric.readthedocs.io/).
+| 包 | 版本 | 用途 |
+|----|------|------|
+| tensorflow | 1.15.5 | FINDER 的 DQN + GraphSAGE 模型 |
+| networkx | 2.6.3 | 图数据结构 |
+| numpy | 1.18.5 | 数值计算 |
+| protobuf | 3.19.6 | TF 1.x 兼容性（必须 < 3.20） |
 
-Please refer to the [PyTorch installation matrix](https://pytorch.org/get-started/locally/) and to the [PyG documentation](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html) to choose the right configuration.
-
-Just as an example, if your host machine supports CUDA (11.8), the command should look like the following:
+**安装命令**：
 ```bash
-conda create --name gdm boost boost-cpp graph-tool dill tqdm numpy scipy pandas seaborn matplotlib python pytorch torchvision torchaudio pytorch-cuda=11.8 pyg -c pyg -c pytorch -c nvidia -c conda-forge -c anaconda
-
-conda activate gdm
+conda create -n finder_tf python=3.7
+conda activate finder_tf
+pip install tensorflow==1.15.5 networkx==2.6.3 numpy==1.18.5
+pip install "protobuf<3.20" --force-reinstall
 ```
 
-Should you experience any issues with the installation, please refer to the respective documentation first.
+### 2.3 外部依赖
 
-NOTE: the models were updated to be compatible with PyG > 1.1.2, however they might provide slightly different results than the original implementation.
+| 依赖 | 说明 | 状态 |
+|------|------|------|
+| `CI.exe` | MinGW 编译的 Collective Influence 可执行文件 | 已编译，位于 `network_dismantling/CI/CI.exe` |
+| `graph_tool` | 原 FINDER 代码依赖 | ❌ Windows 不可用，已用纯 Python 替代 |
+| Cython/C++ | 原 FINDER 的 Cython 扩展 | ❌ Windows 编译失败，已用纯 Python 重写 |
 
-#### FINDER
+---
 
-```bash
-# If you have a CUDA compatible GPU
-conda create --name finder cython==0.29.13 networkx==2.3 numpy==1.17.3 pandas==0.25.2 scipy==1.3.1 tensorflow==1.14.0 tqdm==4.36.1 dill graph-tool -c conda-forge
+## 3. 统一接口使用指南
 
-# Otherwise, the models will be run on the CPU
-conda create --name finder cython==0.29.13 networkx==2.3 numpy==1.17.3 pandas==0.25.2 scipy==1.3.1 tensorflow-cpu==1.14.0 tqdm==4.36.1 dill graph-tool -c conda-forge
+### 3.1 基本调用
+
+```python
+from network_dismantling.unified_interface import dismantle, METHOD_REGISTRY
+import networkx as nx
+
+# 生成测试网络
+G = nx.barabasi_albert_graph(100, 4, seed=42)
+
+# 查看所有可用方法
+print(METHOD_REGISTRY.keys())
+
+# 调用拆解算法
+seq = dismantle(G, method='CI_L2', stop_condition=10)
+# seq: 节点移除顺序列表（原始节点 ID）
 ```
 
-### Common
+### 3.2 接口参数
 
-After creating (or unpacking) the environment, you can install the package as follows:
-
-```bash
-conda activate <ENVIRONMENT_NAME>
-
-cd review
-
-pip install -e .
+```python
+dismantle(G, method, stop_condition=None, **kwargs)
 ```
 
-The '-e' flag installs the package in development mode, and will keep the installed package in sync with the directory.
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `G` | `networkx.Graph` | 输入图（有向图会自动转为无向图） |
+| `method` | `str` | 方法名，必须在 `METHOD_REGISTRY` 中 |
+| `stop_condition` | `int` | 当最大连通分量（LCC）≤ 此值时停止；若为 None 则拆完所有节点 |
+| `**kwargs` | - | 方法特定参数（如 `seed`, `model_path` 等） |
 
-FINDER also requires the following additional steps, due to the use of Cython:
-Please make sure to use the GCC-8 compiler, as the code is not compatible with GCC-9 right now.
+### 3.3 图标准化
 
-```bash
-# Ubuntu
-sudo apt install gcc-8 g++-8
+统一接口内部会自动执行：
+1. 将图转为无向简单图（去除自环、重边）
+2. 将节点重新编号为 `0, 1, ..., n-1`
+3. 若方法返回的序列不完整，剩余节点按度降序补全
+4. 将结果映射回原始节点 ID
 
-# Fedora
-sudo dnf install gcc-8 g++-8
+---
+
+## 4. 各算法详细说明
+
+### 4.1 静态启发式（Heuristics）
+
+基于节点中心性一次性计算分数，按分数降序移除。速度快，适合大规模网络。
+
+#### `degree` — 度中心性
+- **原理**：移除度数最高的节点
+- **复杂度**：`O(n log n)`（排序）
+- **参数**：无
+- **适用场景**：大规模网络快速基准
+
+#### `pagerank` — PageRank
+- **原理**：基于 Google PageRank 算法的重要性排序
+- **复杂度**：`O(n log n)`
+- **参数**：无
+
+#### `betweenness` — 介数中心性
+- **原理**：经过该节点的最短路径数量
+- **复杂度**：`O(n · m)`，大图极慢
+- **参数**：无
+- **注意**：BA-1000 上约需 100+ 秒，建议仅用于小规模网络
+
+#### `eigenvector` — 特征向量中心性
+- **原理**：邻接矩阵主特征向量对应的节点权重
+- **复杂度**：`O(n log n)`
+- **参数**：无
+
+#### `random` — 随机移除
+- **原理**：随机打乱节点顺序后移除
+- **复杂度**：`O(n)`
+- **参数**：`seed`（可选）
+
+```python
+seq = dismantle(G, 'degree', stop_condition=10)
+seq = dismantle(G, 'random', stop_condition=10, seed=42)
 ```
 
-```bash
-cd network_dismantling/FINDER/
+---
 
-export CC=/usr/bin/gcc-8
-export GCC=/usr/bin/gcc-8
+### 4.2 精确解：`brute_force`
 
-python setup.py clean
-python setup.py build
-````
+- **原理**：枚举所有大小为 k 的节点组合，找使 LCC 最小的组合
+- **复杂度**：`O(C(n,k))`，仅适用于 n ≤ 30 的小网络
+- **参数**：
+  - `max_k=10`：最大搜索的节点组合大小
+- **适用场景**：小网络的精确基准
 
-## Dataset
-
-### Data used in the paper
-
-This repository contains the datasets used in the experiments.
-We refer the Reader to the [Read-me](DATASET_README.md) for more information about the data sources, citations, licenses, etc.
-
-### New data
-
-If you wish to use this code to dismantle your own networks, you can do so as follows:
-
-1. First, convert your networks to the GT/GraphML formats.
-
-    ```bash
-    python -u network_dismantling/converter.py -i <INPUT_FOLDER> -o <OUTPUT_FOLDER> -e <INPUT_FORMAT>
-    
-    # Example
-    python -u network_dismantling/converter.py -i dataset/MY_FOLDER/ -o dataset/MY_FOLDER/dataset/ -e el
-    ```
-
-   Arguments:
-    - -h, --help show this help message and exit
-    - -i, --input INPUT Location of the input networks (directory)
-    - -o, --output OUTPUT Location of the output directory
-    - -nw, --no_weights Discard weights
-    - -ei, --input_ext [EXT(s)]   Input extension(s) without dot
-    - -eo, --output_ext EXT Output file extension without dot (e.g., gt, graphml, ...)
-
-3. After converting (or, if you already have networks in such formats), you can run the dismantler script as detailed in
-   section [Running the dismantler](#running-the-dismantler).
-
-## Running the dismantler
-
-To run the dismantler, you first need to set up the environment as detailed in section [Setup](#setup).
-After that, you should activate the right environment, depending on the algorithm you want to run.
-For example, to run the GDM algorithm, you should run:
-
-```bash
-conda activate gdm
+```python
+seq = dismantle(G, 'brute_force', stop_condition=5, max_k=8)
 ```
 
-Or, to run the FINDER algorithm, you should run:
+---
 
-```bash
-conda activate finder
+### 4.3 Collective Influence：`CI_L1`, `CI_L2`, `CI_L3`
+
+- **原理**：`CI_ℓ(i) = (k_i - 1) Σ_{j∈∂B(i,ℓ)} (k_j - 1)`，考虑 ℓ-hop 邻居影响的节点重要性
+- **实现**：调用预编译的 `CI.exe`（MinGW 编译，Windows 原生）
+- **复杂度**：取决于 `ℓ` 和网络结构，通常 `O(n · d^ℓ)`
+- **参数**：
+  - `l`：已在方法名中固定（L1=1, L2=2, L3=3）
+- **注意**：`CI.exe` 必须存在且可执行
+
+```python
+seq = dismantle(G, 'CI_L2', stop_condition=10)  # 最常用
 ```
 
-A similar command should be used for the other algorithms.
+---
 
-```bash
-conda activate dismantling
+### 4.4 CoreHD
+
+- **原理**：三步策略：
+  1. **Fix0**：从 2-core 中迭代移除最大度节点
+  2. **大树拆分**：对超过阈值的大树组件，找使最大子树最小的分割点
+  3. **贪心回插**：尝试将被移除节点加回，若不导致组件超标则保留
+- **实现**：纯 Python/networkx，基于 C++ 源码重构
+- **复杂度**：`O(n log n)` 到 `O(n^2)`，取决于网络结构
+- **参数**：
+  - `seed`：随机种子（用于 Fix0 阶段的节点平局打破）
+
+```python
+seq = dismantle(G, 'CoreHD', stop_condition=10, seed=42)
 ```
 
-Please note that a script that takes care of switching to the right environment is provided in currently in the works.
+---
 
-Then, you can run the dismantler script as follows:
-[//]: # (3. you can add the node features and other info required via:)
+### 4.5 GND / EGND
 
-```bash
-cd review
+#### `GND` — Generalized Network Dismantling
+- **原理**：
+  1. 提取最大连通分量（GCC）
+  2. 用幂迭代计算 Fiedler 向量（图拉普拉斯第二小特征值对应的特征向量）
+  3. 按 Fiedler 向量符号将 GCC 二分
+  4. 构建跨分区的割边子图
+  5. 对割边做贪心顶点覆盖
+  6. 移除覆盖节点，重复直到 GCC ≤ stop_condition
+- **实现**：纯 Python，使用 `scipy.sparse` 进行稀疏矩阵运算
+- **复杂度**：每次迭代 `O(m · iter)`，其中 iter 是幂迭代次数（默认 `30·log(n)·√log(n)`）
+- **参数**：
+  - `remove_strategy=3`：3=无权（默认），1=加权
+  - `maxiter`：幂迭代最大次数
+  - `tol=1e-6`：收敛容差
+  - `seed`：随机初始化种子
 
-python network_dismantling/dismantler.py -l <DATASET_FOLDER> -H <DISMANTLING_ALGORITHM(s)> -t <DISMANTLING_THRESHOLD> [-i <INPUT_DATAFRAME(s)] [-o <OUTPUT_DATAFRAME>] [-F <DATA_FILTER] 
+#### `EGND` — Ensemble GND
+- **原理**：运行 GND 多次（默认 10 次），每次用不同随机种子，取移除节点数最少的结果
+- **参数**：
+  - `runs=10`：运行次数
+  - `remove_strategy`：同 GND
+
+```python
+seq = dismantle(G, 'GND', stop_condition=10, seed=42)
+seq = dismantle(G, 'EGND', stop_condition=10, runs=10, seed=42)
 ```
 
-The script will run all the algorithms and save the results in the _out_ folder.
-In particular, by default, the results will be saved in the _out/df/heuristics.csv_ DataFrame file.
-The file will contain the results of all the algorithms, and will be used by the plotting scripts.
+**注意**：GND 在 BA-1000 上约需 15 秒，是库中最慢的方法之一。
 
-The parameters are as follows:
+---
 
-- --location, -l: the folder containing the datasets in the GT/GraphML format.
-- --heuristics, -H: the dismantling algorithm(s) to run. See the [Algorithms](#algorithms) section for more
-  information.
-- --threshold, -t: the dismantling threshold to use for the dismantling algorithm(s): $t \in [0, 1]$, represents
-  the target fraction of the Largest Connected Component Size.
-- --output, -o: the output DataFrame file to use.
-- --input, -i: the input DataFrame file(s) to read to avoid duplicate runs. The script will try to use the same
-  DataFrame used for the output.
-- --filter, -F: the filter to use to select the networks to run the algorithms on. The filter is a string that
-  will be used to match the network names. The default is "*", which will run the algorithms on all the networks
-  in the folder.
-- --jobs, -j: number of parallel jobs to run. The default is 1. NOT YET IMPLEMENTED IN THIS VERSION.
+### 4.6 EI：`EI_s1`, `EI_s2`
 
-Example usage:
+- **原理**：Explosive Immunization，基于"有效度数"（effective degree）的贪心策略
+  - 将节点按有效度数排序
+  - 用并查集（DSU）高效追踪连通分量变化
+  - 贪心移除使 LCC 下降最快的节点
+- **实现**：纯 Python/networkx，去除了原 graph_tool 依赖
+- **复杂度**：`O(n α(n))`，DSU 优化后接近线性
+- **参数**：
+  - `sigma`：已在方法名中固定（s1→σ=1, s2→σ=2）
+  - `kk=1000`：迭代次数参数
+  - `seed`：随机种子
 
-```bash
-# Run the dismantler on all the networks in the dataset/test_review folder, using the GND, the MS and the CI l2 algorithms with threshold 0.1
-python network_dismantling/dismantler.py -l dataset/test_review/ -t 0.1 -H GND MS CollectiveInfluenceL2 -o out/df/heuristics.csv
-
-# As above, but only on the networks whose name contains the string "corruption"
-python network_dismantling/dismantler.py -l dataset/test_review/ -t 0.1 -H GND MS CollectiveInfluenceL2 -o out/df/heuristics.csv -F "*corruption*"
-
-# As above, but also scans the dataset/test_review_lfr folder for networks (without filtering)
-python network_dismantling/dismantler.py -l dataset/test_review/ dataset/test_review_lfr/ -t 0.1 -H CoreHD GND -o out/df/heuristics.csv 
+```python
+seq = dismantle(G, 'EI_s1', stop_condition=10, seed=42)
+seq = dismantle(G, 'EI_s2', stop_condition=10, seed=42)
 ```
 
-## Result visualization
+---
 
-### Plotting
+### 4.7 多尺度纠缠：`entanglement_small`, `entanglement_mid`, `entanglement_large`
 
-We provide a script to plot the results of the dismantling algorithms.
-In particular, the _plot.py_ script will produce a plot for each network, showing the dismantling curve of the
-algorithms.
+- **原理**：基于信息论（Shannon 熵）的节点重要性度量。节点纠缠度越高，移除后对网络连通性的破坏越大。
+- **实现**：networkx 版本，去除了原 graph_tool 依赖
+- **复杂度**：取决于网络规模，通常 `O(n^2)` 到 `O(n^3)`
+- **参数**：无
 
-```bash
-python plot.py -f <DATAFRAME_FILE(s)> [-q <QUERY>] [-sf <MAX>] [-o <OUTPUT>] [-s <COLUMN>] [-sa]
+```python
+seq = dismantle(G, 'entanglement_small', stop_condition=10)
 ```
 
-Flags:
+---
 
-- -h, --help Shows the help message and exit
-- -f, --file FILE(s)            Output DataFrame file(s) location
-- -q, --query QUERY Provides a way to query the DataFrame.
-  See [pandas.DataFrame.query](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.query.html)
-  for the syntax.
-- -sf, --show_first MAX Shows at most the first MAX dismantling curves (the best)
-- -o, --output OUTPUT Output plot location
-- -s, --sort_column COLUMN DataFrame column used to sort the entries
-- -sa, --sort_descending Sorting the entries in descending order
+### 4.8 顶点纠缠：`vertex_entanglement`
 
-Example usage:
+- **原理**：纯 numpy 谱计算，通过图的谱特性度量节点对网络连通性的贡献
+- **实现**：`VertexEnt_nx`，纯 numpy + networkx，无需 graph_tool
+- **复杂度**：谱计算主导，约 `O(n^3)` 或 `O(m·k)`（k 为迭代次数）
+- **参数**：无
 
-```bash
-# Plot the results of the dismantling algorithms store in the out/df/heuristics.csv file, uses the out/plot/ folder as root for the output plots
-python network_dismantling/plot.py -f out/df/heuristics.csv -o out/plot/
-
-# Same as above, but shows only the first 5 dismantling curves (the best) according to the roc_auc score (sorted ascending)
-python network_dismantling/plot.py -f out/df/heuristics.csv -o out/plot/ -sf 5 -s roc_auc -sa
-
-# Same as above, but only for the networks whose name is "corruption"
-python network_dismantling/plot.py -f out/df/heuristics.csv -o out/plot/ -sf 5 -s roc_auc -sa -q 'network=="corruption"'
-
-# Same as above, but only for the networks whose name contains the string "corruption"
-python network_dismantling/plot.py -f out/df/heuristics.csv -o out/plot/ -sf 5 -s roc_auc -sa -q 'network.str.contains("corruption")'
+```python
+seq = dismantle(G, 'vertex_entanglement', stop_condition=10)
 ```
 
-### Tables
+---
 
-The result tables are generated by the _table\_output.py_ script.
-The script will generate a .csv file containing the results of the algorithms in tabular form, along with the same data
-in .tex format.
+### 4.9 GDM / GDM+R
 
-The script can be run as follows:
+#### `GDM` — Graph Dismantling Machine
+- **原理**：
+  1. 用 GAT（Graph Attention Network）一次性预测所有节点的拆解重要性分数
+  2. 按分数降序逐步移除节点，检查 LCC 是否达标
+- **模型**：3 层 GATConv，参数量约 12KB，训练于 4138 个真实网络（带 CoreHD 伪标签）
+- **实现**：PyTorch + PyTorch Geometric
+- **复杂度**：推理 `O(m·h)`（h=注意力头数），单次前向传播即可得全图分数
+- **参数**：
+  - `model_path`：模型权重路径（默认 `network_dismantling/GDM/models_newpg/gdm_nx_best.pth`）
+  - `device`：推理设备（自动检测 CUDA，否则 CPU）
 
-```bash
-python table_output.py -f <DATAFRAME_FILE(s)> [-q <QUERY>] [-o <OUTPUT>] [-s <COLUMN>] [-sa]
+#### `GDM+R` — GDM + Reinsertion
+- **原理**：在 GDM 初始序列基础上，尝试按逆序回插已移除节点。若回插后 LCC 仍 ≤ stop_condition，则保留该节点在图中。
+- **效果**：通常使 rem_num 减少 10-30%
+- **参数**：同 GDM
+
+```python
+seq = dismantle(G, 'GDM', stop_condition=10)
+seq = dismantle(G, 'GDM+R', stop_condition=10)
+# 或指定自定义模型
+seq = dismantle(G, 'GDM+R', stop_condition=10, 
+                model_path='path/to/custom_model.pth',
+                device='cuda')
 ```
 
-Flags:
+**注意**：GDM 模型权重仅 ~12KB，推理速度快（BA-1000 约 4.5 秒）。
 
-- -h, --help Shows the help message and exit
-- -f, --file FILE(s)            Output DataFrame file(s) location
-- -q, --query QUERY Provides a way to query the DataFrame.
-  See [pandas.DataFrame.query](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.query.html)
-  for the syntax.
-- -o, --output OUTPUT Output plot location
-- -s, --sort_column COLUMN Column values to display in the table
-- -sa, --sort_descending Sorting descending
-- -i, --index INDEX DataFrame column used as table rows
-- -c, --columns COLUMNS DataFrame columns used as table columns
-- -P, --pivot Transpose x and y axes (convenience flag for leaving -i and -c as defaults)
-- -rn, --row_nan Drop any row with NaN values
-- -cn, --col_nan Drop any column with NaN values
+---
 
-```bash
-# Generate the table for the results of the dismantling algorithms store in the out/df/heuristics.csv file, uses the out/table/ folder as root for the output tables
-python network_dismantling/table_output.py -f out/df/heuristics.csv -o out/table/
+### 4.10 FINDER
 
-# Same as above, but shows the auc values and pivots the table
-python network_dismantling/table_output.py -f out/df/heuristics.csv -o out/table/ -s roc_auc -sa -P
+- **原理**：强化学习（DQN）+ GraphSAGE
+  1. 每步用 GraphSAGE 计算节点 embedding
+  2. action embedding × global embedding → Q-value
+  3. 选 Q-value 最大的节点移除
+  4. 重复直到所有边被覆盖
+- **模型**：预训练于 n=30~50 的合成 BA 网络（`nrange_30_50_iter_78000.ckpt`）
+- **实现**：TensorFlow 1.15 + 纯 Python 数据准备（已替代原 Cython 扩展）
+- **复杂度**：每步需一次 TF 前向传播，BA-1000 约 1.6 秒
+- **环境**：必须在 `finder_tf` conda 环境中运行
+- **调用方式**：不通过统一接口，直接使用 `finder_pure.py`
 
-# Same as above, but only for the networks used in the review
-python network_dismantling/table_output.py -f out/df/heuristics.csv -o out/table/ -s roc_auc -sa -P -q 'network in @review_networks'
+```python
+# 必须在 finder_tf 环境中运行
+import sys
+sys.path.insert(0, 'network_dismantling/FINDER_ND')
+from finder_pure import FINDER_Pure
+import networkx as nx
+
+dqn = FINDER_Pure()
+dqn.LoadModel('network_dismantling/FINDER_ND/models/nrange_30_50_iter_78000.ckpt')
+
+G = nx.barabasi_albert_graph(100, 4, seed=42)
+solution, time_cost = dqn.EvaluateRealData(G, stepRatio=0.01)
 ```
 
-We have similar scripts for the synthetic networks, which use the same syntax.
-Specifically, the _table\_output_lfr.py_ and the _table\_output_synth.py_ scripts will generate the tables for the LFR
-and for the other synthetic networks, respectively.
+**跨环境限制**：FINDER 无法直接注册到 `kanResilience` 环境的统一接口中（Python 3.7 vs 3.10 不兼容）。若需在统一对比中使用，建议：
+1. 在 `finder_tf` 中独立运行 FINDER
+2. 将结果保存为 CSV/JSON
+3. 在 `kanResilience` 中读取合并
 
-All the table scripts will produce a .csv output along with a table in .tex format.
+---
 
-It is worth mentioning that the -P flag (--pivot) will pivot the table.
+## 5. 结果文件说明
 
-## Issues
+### 5.1 重复实验结果
 
-If you find any issue with the code after reading this file carefully, please feel free to submit an Issue in the GitHub repository.
+| 文件 | 内容 | 行数 |
+|------|------|------|
+| `results/results_repeated_main.csv` | 6 方法 × 3 网络 × 7 规模 × 20 次 | 2521（含表头） |
+| `results/results_repeated_finder.csv` | FINDER × 3 网络 × 7 规模 × 20 次 | 421（含表头） |
+| `results/dismantling_results.xlsx` | 合并后的均值/标准差/透视表 | 6 个 Sheet |
 
-Please provide information about your system, your environment, the traceback of the exception (if any), the script where the issue appeared, the input parameters and any other useful information.
+### 5.2 Excel 文件结构
 
-## [WIP] Contributing
+| Sheet | 说明 |
+|-------|------|
+| `Summary_Mean_Std` | 均值 ± 标准差（完整表格，4 位小数） |
+| `Mean_Only` | 仅均值（论文用简洁版） |
+| `Stddev_Only` | 仅标准差 |
+| `Raw_Data` | 2940 行原始实验数据 |
+| `AUC_Pivot` | 方法 × 网络的 AUC 均值透视表 |
+| `RemNum_Pivot` | 方法 × 网络的 rem_num 均值透视表 |
 
-This repository is meant to be a collaborative project, where new dismantling algorithms can be easily integrated and benchmarked.
-To do so, we have built a simple framework that allows to easily integrate new algorithms and compare them with the existing ones.
-New algorithms can be integrated by implementing a simple function that takes as input an undirected graph-tool graph and returns a list of nodes to remove.
-The function should then be registered using the `@dismantling_algorithm` decorator.
+---
 
-[//]: # (You can integrate a new algorithm just by providing a function)
-If you wish to contribute to this project, please feel free to submit a Pull Request in the GitHub repository.
-**Keep in mind that this project is still under development, so please contact the authors before starting to work on a new feature.**
-In fact, we are currently planning to polish the integration of algorithms, and also on a better way to handle the output.
+## 6. 已知限制与注意事项
 
-### More info will be added, also about edge dismantling
+### 6.1 环境隔离
 
-[1]: https://graph-tool.skewed.de/
-[2]: https://www.anaconda.com/products/individual
+| 方法 | 所需环境 | 原因 |
+|------|---------|------|
+| degree, CI_L2, CoreHD, GND, EI, entanglement, vertex_entanglement, GDM, GDM+R | `kanResilience` | Python 3.10 + PyTorch 2.3 |
+| FINDER | `finder_tf` | Python 3.7 + TensorFlow 1.15 |
+
+**无法跨环境 import**。FINDER 的 `.ckpt` 权重格式为 TF 1.x 专有，无法加载到 PyTorch 中。
+
+### 6.2 方法适用性
+
+| 方法 | 小图 (n<100) | 中图 (100-500) | 大图 (500+) | 备注 |
+|------|-------------|---------------|------------|------|
+| brute_force | ✅ 精确 | ❌ 不可行 | ❌ 不可行 | 仅 n ≤ 30 |
+| betweenness | ✅ | ⚠️ 慢 | ❌ 极慢 | BA-1000 需 100+s |
+| GND | ✅ | ⚠️ 慢 | ❌ 极慢 | BA-1000 需 15+s |
+| CI_L2 | ✅ | ✅ | ✅ | 综合最优 |
+| CoreHD | ✅ | ✅ | ✅ | ER 上优于 BA |
+| GDM/GDM+R | ✅ | ✅ | ✅ | 需 PyTorch |
+| FINDER | ✅ | ✅ | ✅ | 需 TF 1.x |
+| degree | ✅ | ✅ | ✅ | 最快但效果一般 |
+
+### 6.3 常见错误
+
+| 错误 | 原因 | 解决 |
+|------|------|------|
+| `CI.exe not found` | MinGW 未编译或文件被移动 | 确认 `network_dismantling/CI/CI.exe` 存在 |
+| `ModuleNotFoundError: torch` | 未激活 `kanResilience` | `conda activate kanResilience` |
+| `tf.sparse_placeholder` 警告 | TF 1.x API 已弃用 | 可忽略，不影响运行 |
+| FINDER `Key Variable_X not found` | 多次创建 `FINDER_Pure` 实例 | 只创建一个实例并复用 |
+| GDM 模型路径错误 | `gdm_nx_best.pth` 不存在 | 确认路径 `network_dismantling/GDM/models_newpg/` |
+
+### 6.4 图输入要求
+
+- 统一接口接受任意 `networkx.Graph`
+- 有向图会自动转为无向图
+- 自环和重边会自动去除
+- 节点 ID 可为任意可哈希类型（字符串、整数等），内部会自动重编号
+
+---
+
+## 7. 快速参考：一行代码调用所有方法
+
+```python
+import networkx as nx
+from network_dismantling.unified_interface import dismantle, METHOD_REGISTRY
+
+G = nx.barabasi_albert_graph(100, 4, seed=42)
+
+# 所有 kanResilience 环境方法
+methods = list(METHOD_REGISTRY.keys())  # 20 个方法
+for method in methods:
+    seq = dismantle(G, method, stop_condition=10)
+    print(f"{method}: removed {len(seq)} nodes")
+
+# FINDER（需在 finder_tf 环境中单独运行）
+# 见 4.10 节示例代码
+```
+
+---
+
+## 8. 引用与致谢
+
+| 方法 | 原始论文 |
+|------|---------|
+| CI | Morone & Makse, *Nature* 2015 |
+| CoreHD | Zdeborová et al., *Sci. Rep.* 2016 |
+| GND/EGND | Wandelt et al., *Nature Commun.* 2018 |
+| EI | Radicchi & Bianconi, *Phys. Rev. E* 2017 |
+| GDM | Fan et al., *PNAS* 2020 |
+| FINDER | Fan et al., *NeurIPS* 2020 |
+| Entanglement | 信息论网络鲁棒性系列工作 |
+
+---
+
+*文档生成时间：2026-05-21*  
+*项目版本：v3-dismantling*

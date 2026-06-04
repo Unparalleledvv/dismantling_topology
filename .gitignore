@@ -108,11 +108,7 @@ venv.bak/
 # macOS
 .DS_Store
 
-# Datasets (large files, do not track)
-dataset/*
-*.el
-*.mtx
-out*/
+# Datasets archive / other formats
 dataset.tar.gz
 
 # Build artifacts
